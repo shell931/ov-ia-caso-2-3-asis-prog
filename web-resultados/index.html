@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pruebas on-premise — Overtech IA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <p class="kicker">Overtech · septiembre 2026 · una RTX PRO 6000 96 GB</p>
+      <h1>Asistente y programador on-premise</h1>
+      <p class="sub">Pruebas reales en AWS (no simulación). Se midió velocidad y espera con mucha gente a la vez. No se juró si el 7B y el 32B dan el mismo consejo.</p>
+    </div>
+  </header>
+  <nav class="bar" aria-label="Secciones">
+    <div class="wrap">
+      <a class="active" href="index.html">Inicio</a>
+      <a href="a-32b.html">A · Dos modelos grandes</a>
+      <a href="b-7b.html">B · Dos modelos 7B</a>
+      <a href="c-32b-solo.html">C · Un modelo 32B</a>
+      <a href="d-7b-32b.html">D · 7B + coder 32B</a>
+      <a href="metodo.html">Cómo se midió</a>
+      <a href="index.html#calidad">Rapidez vs calidad</a>
+      <a href="resumen-32b.html">Resumen 32B</a>
+      <a href="30-concurrencias.html">Cómo lograr 30 concurrencias</a>
+    </div>
+  </nav>
+  <main class="wrap">
+    <h2>En cuatro líneas</h2>
+    <ol class="resumen">
+      <li><strong>Una PRO 6000 alcanza</strong> para tener los dos servicios. El cuello no es “no caben”.</li>
+      <li><strong>Quien se pone lento es siempre el chat de documentos</strong>, no el de código.</li>
+      <li><strong>La decisión es calidad vs. que no se trabe la oficina</strong>, no “¿una GPU o dos?”.</li>
+      <li><strong>Segunda GPU</strong> solo si quieren calidad de 32B + pico de 8–15 fluidos + programador al mismo tiempo.</li>
+    </ol>
+    <p class="small">50 personas con el chat <em>abierto</em> no son 50 generando a la vez. El servidor atiende a todos; se gestiona el turno.</p>
+
+    <h2>Las campañas</h2>
+    <div class="cards">
+      <article class="card">
+        <p class="tag">Escenario A</p>
+        <h3><a href="a-32b.html">Dos modelos grandes</a></h3>
+        <p>Asistente 32B + programador ~30B en la misma GPU. Calidad alta. Chat de empresa cómodo de a <strong>~5</strong>. El equipo de código cabe entero.</p>
+        <p><span class="pill no">Pico 8–15 no</span></p>
+      </article>
+      <article class="card">
+        <p class="tag">Escenario B</p>
+        <h3><a href="b-7b.html">Dos modelos 7B</a></h3>
+        <p>Asistente 7B + programador 7B. El pico de oficina <strong>sí entra</strong> (hasta ~20). Calidad no jurada: el 7B no es “el 32B más barato”.</p>
+        <p><span class="pill ok">Pico 8–15 sí</span></p>
+      </article>
+      <article class="card">
+        <p class="tag">Escenario C</p>
+        <h3><a href="c-32b-solo.html">Un modelo 32B</a></h3>
+        <p>Asistente 32B solo (septiembre) y, de julio, coder 32B solo. Sacar al programador no salva 25–50 preguntas distintas a la vez.</p>
+        <p><span class="pill no">25 / 50 distintos: no</span></p>
+      </article>
+      <article class="card">
+        <p class="tag">Escenario D</p>
+        <h3><a href="d-7b-32b.html">7B instruct + coder 32B</a></h3>
+        <p>Siguiente campaña. Chat chico + programador grande en una GPU. Script listo. <strong>Aún no hay números</strong>: la máquina está apagada.</p>
+        <p><span class="pill warn">Pendiente de medir</span></p>
+      </article>
+      <article class="card">
+        <p class="tag">Método</p>
+        <h3><a href="metodo.html">Cómo se midió</a></h3>
+        <p>Prompts del asistente (política de <a href="politica.html">100 artículos</a> + a01–a50) y del coder (Flask y JWT). Cómo se abrieron N+N conexiones a la vez durante 90 s.</p>
+      </article>
+      <article class="card">
+        <p class="tag">Resumen</p>
+        <h3><a href="resumen-32b.html">Dos modelos de 32B</a></h3>
+        <p>Caben en una GPU. El chat de documentos se atasca primero. La segunda GPU no es para que quepan: es para que no se trabe el pico.</p>
+      </article>
+      <article class="card">
+        <p class="tag">30 a la vez</p>
+        <h3><a href="30-concurrencias.html">Cómo lograr 30 concurrencias</a></h3>
+        <p>Solo el chat de empresa. Un 32B en una GPU no alcanza. Tres 32B, un 7B, turno de ~5, o empezar con 7B + coder 32B en una máquina.</p>
+      </article>
+    </div>
+
+    <h2>Cómo leer “se siente bien”</h2>
+    <p class="lead">Criterio de las pruebas: cada persona recibe texto a buen ritmo (unas 10 palabras-pieza por segundo o más) y nadie recibe error. Si baja de eso, el chat se siente trabado aunque la máquina no se caiga.</p>
+
+    <h2 id="calidad">Rapidez vs calidad</h2>
+    <p><strong>No medimos que 7B y 32B tengan la misma calidad.</strong> Medimos si la oficina se traba. El 32B se elige porque entiende mejor políticas y escribe código más entero. El 7B se elige para que 8–15 personas no esperen. No son intercambiables.</p>
+    <table>
+      <thead>
+        <tr><th></th><th>32B (grande)</th><th>7B (chico)</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Qué ganas</td>
+          <td>Mejor respuesta (matices, excepciones, APIs más completas)</td>
+          <td>Más gente generando a la vez sin que se sienta lento</td>
+        </tr>
+        <tr>
+          <td>Qué pierdes</td>
+          <td>Hay que atender el chat de a ~5 si comparte GPU</td>
+          <td>Calidad no jurada; hay que leer respuestas de RRHH y código antes de producción</td>
+        </tr>
+        <tr>
+          <td>En las pruebas</td>
+          <td>Respuestas más largas (~90 piezas de texto)</td>
+          <td>Respuestas más cortas (~59). Eso no prueba calidad, pero no es “lo mismo”</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Máquina de todas las pruebas</h2>
+    <div class="hw">
+      <div><span>GPU</span><b>RTX PRO 6000</b>96 GB · hasta 600 W</div>
+      <div><span>Host</span><b>8 vCPU</b>62 GiB RAM</div>
+      <div><span>Tipo</span><b>g7e.2xlarge</b>AWS, no emulador</div>
+      <div><span>Runtime</span><b>vLLM 0.28</b>septiembre 2026</div>
+    </div>
+    <p class="small">Detalle en el repo: <a href="https://github.com/shell931/ia-analisis/tree/cursor/pruebas-dos-modelos-coresidentes-g7e-4c0f/pruebas-prog-asis-sep">pruebas-prog-asis-sep/</a></p>
+  </main>
+  <footer>
+    Overtech · pruebas de septiembre 2026 · página pública de resultados. Los JSON crudos están en el repositorio.
+  </footer>
+</body>
+</html>

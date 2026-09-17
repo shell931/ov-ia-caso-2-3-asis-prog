@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Resumen · dos modelos grandes — Overtech IA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <p class="kicker">Escenario A · dos modelos grandes en una GPU</p>
+      <h1>Dos modelos de 32B, en corto</h1>
+      <p class="sub">Caben. El que se atasca es el chat de documentos, no el de código.</p>
+    </div>
+  </header>
+  <nav class="bar" aria-label="Secciones">
+    <div class="wrap">
+      <a href="index.html">Inicio</a>
+      <a href="a-32b.html">A · Dos modelos grandes</a>
+      <a href="b-7b.html">B · Dos modelos 7B</a>
+      <a href="c-32b-solo.html">C · Un modelo 32B</a>
+      <a href="d-7b-32b.html">D · 7B + coder 32B</a>
+      <a href="metodo.html">Cómo se midió</a>
+      <a class="active" href="resumen-32b.html">Resumen 32B</a>
+      <a href="30-concurrencias.html">Cómo lograr 30 concurrencias</a>
+    </div>
+  </nav>
+  <main class="wrap">
+    <p>En la misma RTX PRO 6000 (96 GB) se corrieron juntos:</p>
+    <ul>
+      <li>el <strong>asistente</strong> (Qwen2.5-32B, lee políticas)</li>
+      <li>el <strong>programador</strong> (Qwen3-Coder-30B, misma talla que un “32B”)</li>
+    </ul>
+    <p>Ocupan ~91% de la tarjeta y <strong>no se llenan más</strong> cuando hay mucha gente. El problema no es “no caben”.</p>
+
+    <h2>Qué se siente en la oficina</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>A la vez</th>
+          <th>Chat de documentos</th>
+          <th>Código</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>~5 + todo el equipo de desarrollo</td>
+          <td>Bien</td>
+          <td>Bien</td>
+        </tr>
+        <tr>
+          <td>8–15 preguntando a la vez</td>
+          <td>Se pone lento</td>
+          <td>Sigue bien</td>
+        </tr>
+        <tr>
+          <td>25 o 50 generando</td>
+          <td>Espera de 1–2 min</td>
+          <td>Sigue usable</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Cincuenta personas con el chat <em>abierto</em> no son cincuenta generando al mismo tiempo. El servidor atiende a todos; se gestiona el turno (de a ~5 en el chat).</p>
+
+    <h2>Conclusión</h2>
+    <ol class="resumen">
+      <li>Una GPU alcanza para tener los dos servicios con calidad de 32B.</li>
+      <li>El programador no es el cuello.</li>
+      <li>Si en hora pico 8–15 personas preguntan a la vez sobre documentos, hay que hacerlas esperar o poner una segunda GPU.</li>
+      <li>La segunda GPU no es para que “quepan”: es para que el chat de 32B no se trabe <em>y</em> el programador siga al mismo tiempo.</li>
+    </ol>
+
+    <h2>Conclusión final: ¿es viable?</h2>
+    <p class="lead"><strong>Sí.</strong> Una sola PRO 6000 alcanza para salir a producción con los dos servicios de 32B, si el chat de documentos se atiende de a unas 5 respuestas a la vez y el resto espera su turno.</p>
+    <p><strong>No es viable</strong> si se espera que 8–15 personas generen a la vez sobre documentos, con calidad de 32B y el programador al mismo tiempo, sin espera. Eso pide segunda GPU (o bajar a 7B).</p>
+    <p>El server no se cae ni se llena de más. Lo que falla sin turno es la espera del chat, no el encaje en la tarjeta.</p>
+
+    <h2>¿Se siente lento?</h2>
+    <p><strong>Con el turno de ~5, no.</strong> Ahí el chat marca 11,5 tokens por segundo y la respuesta entera (unas 90 piezas) tarda ~8 s; en el 5% más lento, ~18 s. Si el texto va apareciendo (streaming), se lee mientras se arma: no es una espera muda. Ese fue el criterio: ≥10 tok/s se siente bien.</p>
+    <p><strong>Sin turno, sí se siente incómodo.</strong> Esos tiempos son lo que tarda <em>en llegar la respuesta completa</em> de un chat de documentos (desde que pides hasta que termina de escribir), no el arranque del server:</p>
+    <table>
+      <thead>
+        <tr><th>Generando a la vez</th><th>Tiempo de esa respuesta (p95)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>5</td><td>~18 s</td></tr>
+        <tr><td>8</td><td>~26 s</td></tr>
+        <tr><td>15</td><td>~52 s</td></tr>
+        <tr><td>25</td><td>~78 s</td></tr>
+        <tr><td>50</td><td>~157 s (unos 2 min 37 s)</td></tr>
+      </tbody>
+    </table>
+    <p>El 5% más lento de cada prueba espera eso o un poco más. No es que cada pregunta suelta tarde 2 minutos: eso pasa cuando hay <strong>50 generando al mismo tiempo</strong> (y otros 50 pidiendo código). Con 1 o 2 preguntas, o con el turno de ~5, no.</p>
+    <p>Una o dos personas preguntando (el día a día) va mejor que la prueba de 5+5, porque esa prueba ya era pico: 5 chats de documentos <em>y</em> 5 de código generando al mismo tiempo. El turno existe justo para no caer en los 8–15.</p>
+    <p class="small">Números y hardware: <a href="a-32b.html">escenario A</a>. Cómo se lanzó: <a href="metodo.html">cómo se midió</a>.</p>
+  </main>
+  <footer>Overtech · septiembre 2026 · RTX PRO 6000</footer>
+</body>
+</html>

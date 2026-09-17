@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A · Dos modelos grandes — Overtech IA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <p class="kicker">Escenario A · 4–5 septiembre 2026 · IP 3.14.129.217</p>
+      <h1>Dos modelos grandes en una GPU</h1>
+      <p class="sub">Asistente 32B y programador grande (~30B) a la vez. Es el par de más calidad. El chat de empresa se traba si generan más de ~5 a la vez.</p>
+    </div>
+  </header>
+  <nav class="bar">
+    <div class="wrap">
+      <a href="index.html">Inicio</a>
+      <a class="active" href="a-32b.html">A · Dos modelos grandes</a>
+      <a href="b-7b.html">B · Dos modelos 7B</a>
+      <a href="c-32b-solo.html">C · Un modelo 32B</a>
+      <a href="d-7b-32b.html">D · 7B + coder 32B</a>
+      <a href="metodo.html">Cómo se midió</a>
+      <a href="resumen-32b.html">Resumen 32B</a>
+      <a href="30-concurrencias.html">Cómo lograr 30 concurrencias</a>
+    </div>
+  </nav>
+  <main class="wrap">
+    <p class="note">Se pidió “dos 32B”. En el servidor corrimos el asistente <strong>Qwen2.5-32B-Instruct-AWQ</strong> y el programador oficial <strong>Qwen3-Coder-30B</strong> (misma talla que un coder 32B; el 32B de código de julio pesa parecido en AWQ). Los dos <strong>sí caben</strong> juntos.</p>
+
+    <h2>Qué se instaló</h2>
+    <table>
+      <thead><tr><th>Rol</th><th>Modelo</th><th>Peso</th><th>Memoria de la GPU</th></tr></thead>
+      <tbody>
+        <tr><td>Asistente (chat de empresa)</td><td>Qwen2.5-32B-Instruct-AWQ</td><td>18,5 GB</td><td>42,9 GB reservados</td></tr>
+        <tr><td>Programador</td><td>Qwen3-Coder-30B-A3B FP8</td><td>30,0 GB</td><td>44,3 GB reservados</td></tr>
+        <tr><td>Total en la tarjeta</td><td>los dos a la vez</td><td>—</td><td><strong>91,2%</strong> (no crece bajo carga)</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Consumo de hardware (en reposo y a full)</h2>
+    <div class="hw">
+      <div><span>VRAM</span><b>91,2%</b>87,2 / 95,6 GB · plana</div>
+      <div><span>GPU</span><b>100%</b>en las mixtas</div>
+      <div><span>RAM del server</span><b>~10 GB</b>16% de 62 GB</div>
+      <div><span>CPU</span><b>28–37%</b>de 8 núcleos</div>
+      <div><span>Pico 50+50</span><b>609 W</b>76 °C</div>
+      <div><span>Errores</span><b>0</b>el server no rechaza</div>
+    </div>
+    <p>La tarjeta se llena de entrada (reserva fija). Encender 50 chats no pide más memoria: pide más espera. CPU y RAM del servidor sobran; el límite es la GPU.</p>
+
+    <h2>Pruebas (los dos generando a la vez)</h2>
+    <p>Misma ventana de 90 s. “OK” = se siente fluido para <em>ambos</em> (chat y código).</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Prueba</th>
+          <th>Gente a la vez</th>
+          <th>Chat empresa</th>
+          <th>Espera chat</th>
+          <th>Programador</th>
+          <th>Espera código</th>
+          <th>¿Oficina OK?</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>5 + 5</td><td>10</td>
+          <td>11,5 tok/s</td><td>18 s</td>
+          <td>23,9 tok/s</td><td>6 s</td>
+          <td><span class="pill ok">Sí</span></td>
+        </tr>
+        <tr>
+          <td>8 + 8</td><td>16</td>
+          <td>8,1 tok/s</td><td>26 s</td>
+          <td>23,9 tok/s</td><td>6 s</td>
+          <td><span class="pill no">No · chat</span></td>
+        </tr>
+        <tr>
+          <td>15 + 15</td><td>30</td>
+          <td>4,5 tok/s</td><td>52 s</td>
+          <td>23,8 tok/s</td><td>6 s</td>
+          <td><span class="pill no">No · chat</span></td>
+        </tr>
+        <tr>
+          <td>25 + 25</td><td>50</td>
+          <td>1,8 tok/s</td><td>78 s</td>
+          <td>23,6 tok/s</td><td>6 s</td>
+          <td><span class="pill no">No · chat</span></td>
+        </tr>
+        <tr>
+          <td>50 + 50 (50 preguntas + código JWT)</td><td>100</td>
+          <td>0,71 tok/s</td><td>157 s</td>
+          <td>20,1 tok/s</td><td>70 s</td>
+          <td><span class="pill no">No · chat</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="small">El programador a 50 sigue usable (el archivo de código tarda ~1 min porque es largo, no porque se caiga). El chat de políticas a 50 espera más de dos minutos.</p>
+
+    <h2>Lectura</h2>
+    <ul>
+      <li>Calidad primero: este es el par.</li>
+      <li>En hora pico, el chat de empresa se atiende de a <strong>unas 5</strong> respuestas a la vez. El resto espera su turno. No hace falta Rabbit.</li>
+      <li>El equipo de desarrollo no necesita segunda GPU.</li>
+      <li>Segunda GPU solo si quieren este nivel de respuesta <em>y</em> 8–15 chats fluidos <em>y</em> el programador al mismo tiempo.</li>
+    </ul>
+    <p class="small">Informe: <a href="https://github.com/shell931/ia-analisis/blob/cursor/pruebas-dos-modelos-coresidentes-g7e-4c0f/pruebas-prog-asis-sep/resultados-asistente-programacion.md">resultados-asistente-programacion.md</a></p>
+  </main>
+  <footer>Overtech · escenario A · RTX PRO 6000</footer>
+</body>
+</html>

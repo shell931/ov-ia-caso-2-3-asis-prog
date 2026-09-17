@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>B · Dos modelos 7B — Overtech IA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <p class="kicker">Escenario B · 6 septiembre 2026 · IP 3.138.67.148</p>
+      <h1>Dos modelos 7B en una GPU</h1>
+      <p class="sub">Asistente 7B + programador 7B, mismos documentos y mismas preguntas que el par grande. El pico de oficina entra. La calidad no se juró.</p>
+    </div>
+  </header>
+  <nav class="bar">
+    <div class="wrap">
+      <a href="index.html">Inicio</a>
+      <a href="a-32b.html">A · Dos modelos grandes</a>
+      <a class="active" href="b-7b.html">B · Dos modelos 7B</a>
+      <a href="c-32b-solo.html">C · Un modelo 32B</a>
+      <a href="d-7b-32b.html">D · 7B + coder 32B</a>
+      <a href="metodo.html">Cómo se midió</a>
+      <a href="resumen-32b.html">Resumen 32B</a>
+      <a href="30-concurrencias.html">Cómo lograr 30 concurrencias</a>
+    </div>
+  </nav>
+  <main class="wrap">
+    <h2>Qué se instaló</h2>
+    <table>
+      <thead><tr><th>Rol</th><th>Modelo</th><th>Peso</th><th>Memoria de la GPU</th></tr></thead>
+      <tbody>
+        <tr><td>Asistente</td><td>Qwen2.5-7B-Instruct-AWQ</td><td>5,3 GB</td><td>42,4 GB reservados (mucho espacio para contexto)</td></tr>
+        <tr><td>Programador</td><td>Qwen2.5-Coder-7B-Instruct-AWQ</td><td>5,3 GB</td><td>44,3 GB reservados</td></tr>
+        <tr><td>Total</td><td>los dos a la vez</td><td>—</td><td><strong>90,8–91,4%</strong> (misma reserva que el par grande)</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Consumo de hardware</h2>
+    <div class="hw">
+      <div><span>VRAM</span><b>91%</b>casi igual que el 32B</div>
+      <div><span>GPU</span><b>100%</b>en las mixtas</div>
+      <div><span>RAM del server</span><b>~9 GB</b>14,5% de 62 GB</div>
+      <div><span>CPU</span><b>26–37%</b>de 8 núcleos</div>
+      <div><span>5+5</span><b>430 W</b>62 °C</div>
+      <div><span>50+50</span><b>557 W</b>72 °C · menos que el par grande (609 W / 76 °C)</div>
+    </div>
+    <p>La tarjeta se reserva igual de llena. Lo que cambia no es “cuánta GPU queda”: es que el modelo chico <strong>genera más rápido</strong> y deja más contexto. CPU y RAM siguen holgados.</p>
+
+    <h2>Pruebas (los dos generando a la vez)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Prueba</th>
+          <th>Gente a la vez</th>
+          <th>Chat 7B</th>
+          <th>Espera</th>
+          <th>Programador 7B</th>
+          <th>Espera</th>
+          <th>¿Oficina OK?</th>
+          <th>El par grande hacía</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>5 + 5</td><td>10</td>
+          <td>30,3 tok/s</td><td>7 s</td>
+          <td>89 tok/s</td><td>1,5 s</td>
+          <td><span class="pill ok">Sí</span></td>
+          <td>11,5 / 24</td>
+        </tr>
+        <tr>
+          <td>15 + 15</td><td>30</td>
+          <td>13,6 tok/s</td><td>17 s</td>
+          <td>82 tok/s</td><td>1,6 s</td>
+          <td><span class="pill ok">Sí</span></td>
+          <td>4,5 / 23 · no</td>
+        </tr>
+        <tr>
+          <td>20 + 20</td><td>40</td>
+          <td>11,7 tok/s</td><td>20 s</td>
+          <td>84 tok/s</td><td>1,6 s</td>
+          <td><span class="pill ok">Sí</span></td>
+          <td>3,5 / 24 · no</td>
+        </tr>
+        <tr>
+          <td>25 + 25</td><td>50</td>
+          <td>8,1 tok/s</td><td>32 s</td>
+          <td>82 tok/s</td><td>1,7 s</td>
+          <td><span class="pill no">No · chat</span></td>
+          <td>1,8 / 24</td>
+        </tr>
+        <tr>
+          <td>50 + 50 (50 preguntas + JWT)</td><td>100</td>
+          <td>1,66 tok/s</td><td>83 s</td>
+          <td>50 tok/s</td><td>27 s</td>
+          <td><span class="pill no">No · chat</span></td>
+          <td>0,71 / 20</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>0 errores en todas. A 50 el chat sigue sin ser fluido, pero duele menos que con el 32B (83 s vs 157 s). El programador 7B, a 50, sigue cómodo.</p>
+
+    <h2>Rapidez vs calidad</h2>
+    <p class="note">El 7B <strong>no</strong> empató al 32B en calidad: no lo medimos. Contestó más corto. Se elige para que la oficina no se trabe, no porque “diga lo mismo”.</p>
+    <ul>
+      <li>Única opción que cumple: asistente + programador en <strong>una</strong> GPU y pico de 8–15 sin trabarse.</li>
+      <li>Antes de producción: leer un juego de respuestas de RRHH y un par de APIs.</li>
+    </ul>
+    <p class="small">Informe: <a href="https://github.com/shell931/ia-analisis/blob/cursor/pruebas-dos-modelos-coresidentes-g7e-4c0f/pruebas-prog-asis-sep/resultados-7b.md">resultados-7b.md</a></p>
+  </main>
+  <footer>Overtech · escenario B · RTX PRO 6000</footer>
+</body>
+</html>

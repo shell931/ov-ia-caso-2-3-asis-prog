@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cómo lograr 30 concurrencias — Overtech IA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <p class="kicker">Solo asistente corporativo · ~30 a la vez</p>
+      <h1>Cómo lograr 30 concurrencias</h1>
+      <p class="sub">Empresa grande, solo el chat de documentos. 30 a la vez <strong>sí dio</strong> en julio si todos usan el mismo documento. <strong>No dio</strong> en septiembre con 25 preguntas distintas.</p>
+    </div>
+  </header>
+  <nav class="bar" aria-label="Secciones">
+    <div class="wrap">
+      <a href="index.html">Inicio</a>
+      <a href="a-32b.html">A · Dos modelos grandes</a>
+      <a href="b-7b.html">B · Dos modelos 7B</a>
+      <a href="c-32b-solo.html">C · Un modelo 32B</a>
+      <a href="d-7b-32b.html">D · 7B + coder 32B</a>
+      <a href="metodo.html">Cómo se midió</a>
+      <a href="resumen-32b.html">Resumen 32B</a>
+      <a class="active" href="30-concurrencias.html">Cómo lograr 30 concurrencias</a>
+    </div>
+  </nav>
+  <main class="wrap">
+    <p class="lead">Las dos mediciones del 32B <em>solo</em> son ciertas. Cambia lo que hacen los 30, no el modelo.</p>
+    <table>
+      <thead>
+        <tr><th>Qué hacen los 30</th><th>Corrida</th><th>tok/s</th><th>¿≥10?</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Mismo documento, misma pregunta (caché entra)</td>
+          <td>28 jul · Instruct solo</td>
+          <td><strong>15,0</strong> · p95 15 s</td>
+          <td><span class="pill ok">Sí</span></td>
+        </tr>
+        <tr>
+          <td>25 preguntas distintas, sin caché</td>
+          <td>6 sep · Instruct solo</td>
+          <td><strong>2,24</strong> · p95 71 s</td>
+          <td><span class="pill no">No</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Si la oficina abre <strong>la misma política</strong> y el RAG deja el documento primero (pregunta al final), se parece a julio: una GPU 32B llega a 30. Si cada uno llega con un tema nuevo y hay que releer ~6.000 tokens, se parece a septiembre: espera de un minuto.</p>
+    <p>Antes de comprar: <strong>30 con el chat abierto</strong> no son <strong>30 apretando enviar al mismo tiempo</strong>. Y 30 enviando no son todos 30 documentos distintos.</p>
+
+    <h2>Si de verdad necesitan ~30 respuestas armándose a la vez</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Prioridad</th>
+          <th>Qué hacer</th>
+          <th>Por qué</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Calidad 32B</td>
+          <td><strong>3 × PRO 6000</strong>, un 32B en cada una, balancear (~10 por GPU)</td>
+          <td>Para <em>preguntas distintas</em> a la vez. Lo cómodo con coder al lado es ~5. Julio (mismo doc, 32B solo) ya cubría 30; no hace falta 3 GPUs en ese uso.</td>
+        </tr>
+        <tr>
+          <td>Una sola GPU</td>
+          <td><strong>7B</strong> de asistente, sin coder en esa tarjeta</td>
+          <td>Con 7B+coder, 20 a la vez sí pasaba (11,7 tok/s). 25 ya no (8,1). 30 solo 7B <strong>hay que medirlo</strong>; puede pasar o quedar justo. Calidad no jurada.</td>
+        </tr>
+        <tr>
+          <td>No comprar más GPU</td>
+          <td>Un 32B + <strong>turno de ~5</strong></td>
+          <td>30 pueden tener el chat abierto. Quien llega 6.º espera. Si los 30 envían juntos, los últimos esperan mucho.</td>
+        </tr>
+        <tr>
+          <td>Empezar en una máquina</td>
+          <td><a href="d-7b-32b.html"><strong>7B instruct + coder 32B</strong></a> (escenario D)</td>
+          <td>Caben. Script listo. Aún no hay números: la GPU está apagada. El chat 7B debería aguantar el pico si el coder no está a full; si los dos tiran a la vez, el coder grande le come GPU al 7B.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>7B instruct + coder 32B en una GPU</h2>
+    <p><strong>Sí se puede empezar así</strong> para ver cómo se comporta, sin comprar otra tarjeta. Los pesos entran sobrados: el 7B pesa ~5 GB y el coder grande ~18–30 GB. El resto de los 96 GB es contexto.</p>
+    <p>Es el <a href="d-7b-32b.html">escenario D</a>: calidad de código alta, chat de empresa más chico. Cómo se esperaría (por lo que sí medimos, no por una corrida de este par):</p>
+    <table>
+      <thead>
+        <tr><th></th><th>Qué esperar</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>¿Caben?</td>
+          <td>Sí. Más holgado que el par 32B+30B (~91%).</td>
+        </tr>
+        <tr>
+          <td>Chat (7B) con el coder quieto</td>
+          <td>Mejor o igual que el par 7B+7B. Ahí 20 a la vez sí pasaba (11,7 tok/s). 30 <strong>hay que medirlo</strong>.</td>
+        </tr>
+        <tr>
+          <td>Chat (7B) con el coder generando</td>
+          <td>Peor que 7B+7B: un coder 32B / 30B usa más GPU que un coder 7B. El chat se puede poner lento aunque el 7B “debería” aguantar.</td>
+        </tr>
+        <tr>
+          <td>Código</td>
+          <td>Calidad de 32B (o del 30B MoE que ya vimos: 25–50 devs seguían fluidos).</td>
+        </tr>
+        <tr>
+          <td>Calidad RRHH</td>
+          <td>La del 7B. No se juró igual al 32B. Hay que leer respuestas.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>El coder de las pruebas grandes fue <strong>Qwen3-Coder-30B</strong> (misma talla). El de julio, <strong>Qwen2.5-Coder-32B-AWQ</strong>. Los dos sirven para este ensayo; el 30B MoE comparte mejor la GPU.</p>
+    <p>Prueba mínima el mismo día: 5, 15, 20 y 30 del asistente 7B, con el coder idle y otra vez con 5–10 del coder a la vez. Criterio: ≥10 tok/s y 0 errores en el chat.</p>
+
+    <h2>Qué haría para Overtech</h2>
+    <ol class="resumen">
+      <li>Si los 30 preguntan sobre <strong>las mismas políticas</strong> (documento reutilizado) → el 32B solo <strong>ya pasó</strong> en julio (15 tok/s). Una GPU. Ver <a href="c-32b-solo.html">C0</a>.</li>
+      <li>Si los 30 llegan con <strong>temas distintos</strong> a la vez → 7B, turno, o más GPUs. El 32B solo no llega (septiembre).</li>
+      <li>Chat + código en una máquina: <a href="d-7b-32b.html">D</a> (7B + coder 32B). El 32B de julio deja de aplicar si el coder comparte la GPU.</li>
+    </ol>
+    <p class="small">Tablas julio/septiembre: <a href="c-32b-solo.html">escenario C</a>. Par 7B: <a href="b-7b.html">escenario B</a>. Cómo se midió: <a href="metodo.html">método</a>.</p>
+  </main>
+  <footer>Overtech · septiembre 2026 · solo asistente corporativo</footer>
+</body>
+</html>

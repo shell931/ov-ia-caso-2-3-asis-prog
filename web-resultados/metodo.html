@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cómo se midió — Overtech IA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <p class="kicker">Método · scripts reales · no es gente en el chat</p>
+      <h1>Cómo se hicieron las pruebas</h1>
+      <p class="sub">Un script abre N chats de documentos y N de código <em>al mismo tiempo</em>, contra las dos APIs, durante 90 segundos. Aquí están los prompts y cómo se lanzó cada corrida.</p>
+    </div>
+  </header>
+  <nav class="bar" aria-label="Secciones">
+    <div class="wrap">
+      <a href="index.html">Inicio</a>
+      <a href="a-32b.html">A · Dos modelos grandes</a>
+      <a href="b-7b.html">B · Dos modelos 7B</a>
+      <a href="c-32b-solo.html">C · Un modelo 32B</a>
+      <a href="d-7b-32b.html">D · 7B + coder 32B</a>
+      <a class="active" href="metodo.html">Cómo se midió</a>
+      <a href="resumen-32b.html">Resumen 32B</a>
+      <a href="30-concurrencias.html">Cómo lograr 30 concurrencias</a>
+    </div>
+  </nav>
+  <main class="wrap">
+    <p class="subnav">
+      <a href="#concurrencia">Concurrencia</a>
+      <a href="politica.html">Documento 100 artículos</a>
+      <a href="#asistente">Prompt del asistente</a>
+      <a href="#preguntas">Preguntas a01–a50</a>
+      <a href="#coder">Prompts del coder</a>
+      <a href="#comandos">Cómo se lanzó cada prueba</a>
+    </p>
+
+    <h2 id="concurrencia">No son dos pruebas en serie</h2>
+    <p>El orquestador es <code>scripts/load_test_mixto.py</code>. Arranca los dos lados en el mismo <code>asyncio.gather</code>: asistente en <code>:8000</code> y programador en <code>:8001</code>. Comparten un reloj de <strong>90 segundos</strong>. Si uno terminara antes, el otro mediría la GPU sin competencia y el número saldría optimista.</p>
+    <div class="flow">
+      <article>
+        <p class="tag">Asistente · puerto 8000</p>
+        <h3>N workers RAG</h3>
+        <p>Cada worker es un “usuario”. Manda su prompt, espera la respuesta, y <strong>en cuanto termina manda otra</strong>, hasta que se acaba el reloj. 15 concurrentes no son 15 peticiones: son 15 generando a la vez, una y otra vez.</p>
+      </article>
+      <article>
+        <p class="tag">Programador · puerto 8001</p>
+        <h3>M workers de código</h3>
+        <p>Misma ventana. Los M piden el <em>mismo</em> Flask (no M APIs distintas). Closed loop igual: termina → otra. En 15+15 hay 30 conexiones vivas en el mismo segundo.</p>
+      </article>
+    </div>
+    <p>Cada petición de <em>septiembre</em> lleva una etiqueta distinta al frente: <code>[Usuario 3·7]</code> (id del worker · número de repetición). Si no, vLLM reutilizaría el prefix cache y el throughput se inflaría.</p>
+    <p><strong>Julio (28 jul, Instruct solo)</strong> usó el otro script: <code>load_test_caso2.py</code>. Misma política + <em>la misma</em> pregunta, 3 envíos por nivel. La etiqueta era solo <code>[Usuario N]</code>, sin número de repetición: el 2.º y 3.er envío reutilizan el contexto. Por eso a 30 dio 15 tok/s. Septiembre midió el peor caso (preguntas distintas, caché tumbado). Las dos cifras son reales; no se restan una a la otra.</p>
+    <table>
+      <thead>
+        <tr><th></th><th>Significa</th><th>No significa</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>15 asistente</td>
+          <td>15 chats RAG generando <em>en ese segundo</em></td>
+          <td>15 personas con el navegador abierto</td>
+        </tr>
+        <tr>
+          <td>15 programación</td>
+          <td>15 Continue / VS Code pidiendo el Flask <em>en ese segundo</em></td>
+          <td>15 IDEs instalados</td>
+        </tr>
+        <tr>
+          <td>90 s</td>
+          <td>Cada worker repite al terminar</td>
+          <td>Un único batch de 30 requests</td>
+        </tr>
+        <tr>
+          <td>C · <code>--c-coder 0</code></td>
+          <td>Solo el asistente, mismo script y mismo reloj</td>
+          <td>Otra herramienta o otra métrica</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="small">Criterio Overtech: ≥10 tokens/s por usuario y 0 errores <em>en los dos</em> a la vez. Por debajo de 10 el chat se siente lento. El Flask generado <strong>no se ejecutó</strong>: se midió si el servidor entregaba el código a tiempo.</p>
+
+    <h2 id="asistente">Qué se le mandó al asistente</h2>
+    <p>No es una línea. Se pega un bloque de política (el <a href="politica.html">documento de 100 artículos</a>) para simular lo que devolvería un RAG: ~<strong>5.981 tokens</strong> + la pregunta. Salida máxima: <strong>512</strong> tokens. Temperature 0,2.</p>
+    <p>El envoltorio es siempre:</p>
+    <pre>Contexto documental interno:
+&lt;política&gt;
+
+Pregunta del colaborador: &lt;a01…a50&gt;
+Responde solo con base en el contexto.</pre>
+    <p><strong>No hay embeddings ni vector store.</strong> El “RAG” ya viene pegado. Mide si la GPU aguanta el contexto largo, no si el consejo es el de un abogado.</p>
+    <p><a href="politica.html"><strong>100 artículos, 21.251 caracteres</strong></a> (vacaciones, jornada, remoto, viáticos, nómina, seguridad, equipos, ética). Inventado.</p>
+    <details class="bloque" open>
+      <summary>Política sintética · 100 artículos</summary>
+      <pre>POLÍTICA INTERNA DE RECURSOS HUMANOS Y OPERACIÓN
+(extracto sintético Overtech · 100 artículos)
+
+Artículo 1. Objeto. La presente política regula el disfrute de vacaciones anuales, permisos remunerados y no remunerados, y licencias especiales para todos los colaboradores con contrato vigente.
+
+Artículo 2. Vacaciones anuales. Todo colaborador con antigüedad mayor a un (1) año tiene derecho a quince (15) días hábiles de vacaciones remuneradas por cada año de servicio. A partir del tercer año de antigüedad, se adicionan dos (2) días hábiles por cada año adicional, hasta un máximo de veinticinco (25) días hábiles.
+
+Artículo 3. Acumulación. Las vacaciones no disfrutadas en el año correspondiente podrán acumularse hasta por un período máximo de dos (2) años, previa autorización escrita del jefe inmediato y de Recursos Humanos.
+
+Artículo 4. Solicitud. Las solicitudes deben presentarse con al menos quince (15) días calendario de anticipación a través del sistema de gestión humana, indicando fechas de inicio y fin, y plan de cobertura de funciones.
+
+Artículo 5. Permisos remunerados. Se reconocen permisos por matrimonio (3 días), fallecimiento de familiar en primer grado (5 días), y citas médicas (hasta 4 horas por evento, máximo 2 al mes).
+
+Artículo 6. Trabajo remoto. El régimen de trabajo remoto se rige por acuerdo individual y no modifica el cómputo de vacaciones ni la jornada laboral semanal de cuarenta (40) horas.
+
+Artículo 7. Capacitaciones. El tiempo dedicado a capacitaciones obligatorias cuenta como tiempo laboral efectivo y no descuenta días de vacaciones.
+
+Artículo 8. Conflictos. Cualquier controversia será resuelta por el Comité de Gestión Humana en un plazo máximo de diez (10) días hábiles.
+
+Artículo 9. Jornada ordinaria. La jornada ordinaria es de cuarenta (40) horas semanales, de lunes a viernes, salvo acuerdos escritos de turnos. El registro de ingreso y salida se hace en el sistema de asistencia. Las omisiones reiteradas se reportan a Recursos Humanos.
+
+Artículo 10. Horario de referencia. El horario de referencia es de 8:00 a 17:00 con una (1) hora de almuerzo no remunerada, salvo áreas de operación continua. Cada gerencia puede fijar franjas de presencia obligatoria de hasta cuatro (4) horas diarias.
+
+Artículo 11. Flexibilidad horaria. Se admite un desfase de hasta sesenta (60) minutos en la hora de entrada, compensado el mismo día, si no hay reunión de cliente ni turno de soporte. No aplica en planta, seguridad ni mesa de ayuda de primer nivel.
+
+Artículo 12. Horas extra. Las horas extra requieren autorización previa del jefe inmediato en el sistema. Se reconocen según la ley laboral aplicable y no se compensan con días libres salvo pacto escrito con Recursos Humanos.
+
+Artículo 13. Recargos nocturnos. El trabajo entre las 21:00 y las 6:00 se considera jornada nocturna para efectos de recargo, cuando esté autorizado. El recargo no se superpone con el de dominical si ya se pagó el mayor.
+
+Artículo 14. Disponibilidad. Quien quede en turno de disponibilidad debe responder en un máximo de treinta (30) minutos por el canal oficial. El tiempo de intervención se reporta al día hábil siguiente.
+
+Artículo 15. Pausas. Se reconocen dos pausas de diez (10) minutos en jornada completa. No son acumulables ni se usan para adelantar la salida. En trabajo remoto se registran igual que en oficina.
+
+Artículo 16. Compensatorios. Los días compensatorios por trabajo en festivo se solicitan dentro de los treinta (30) días siguientes. Vencido el plazo, se pagan según nómina. No se adelantan compensatorios a cuenta de festivos futuros.
+
+Artículo 17. Registro de asistencia. El marcaje por aplicación móvil geolocalizada es válido en visitas a cliente. El marcaje por otro colaborador está prohibido y es falta grave.
+
+Artículo 18. Retrasos. Tres retrasos de más de quince (15) minutos en un mes calendario generan llamado de atención escrito. Cinco en el mismo mes se elevan a proceso disciplinario.
+
+Artículo 19. Ausencia no justificada. La ausencia de un día hábil sin aviso antes del inicio de jornada se trata como falta. El aviso por chat informal no sustituye el registro en el sistema de gestión humana.
+
+Artículo 20. Calendario laboral. El calendario de festivos y puentes se publica cada noviembre para el año siguiente. Los puentes no son vacaciones: son jornada no laboral de la compañía.
+
+Artículo 21. Días de oficina. Las áreas con esquema híbrido definen al menos dos (2) días presenciales por semana. El calendario de días en sede se carga el viernes anterior. El incumplimiento reiterado se trata como inasistencia a jornada pactada.
+
+Artículo 22. Lugar de remoto. El trabajo remoto se presta desde un domicilio declarado. Trabajar desde un café o espacio público con datos de cliente requiere VPN y pantalla con filtro. No se presta servicio remoto desde otro país sin autorización de Legal y de la gerencia.
+
+Artículo 23. Conectividad. La compañía no asume el costo del internet residencial salvo pacto en el acuerdo de remoto. Si hay caída mayor a dos (2) horas, el colaborador se reporta y acude a sede o a un espacio autorizado.
+
+Artículo 24. Herramientas de remoto. La cámara en reuniones con cliente es obligatoria salvo causa justificada. El fondo virtual debe ser neutro. Grabar una reunión requiere aviso a los participantes.
+
+Artículo 25. Sede y puestos. Los puestos de la sede son hot-desk salvo roles de laboratorio. Se reserva por la app con un máximo de un día de antelación. Quien no libere el puesto a las 10:00 pierde la reserva.
+
+Artículo 26. Parqueadero. El parqueadero de sede se asigna por sorteo trimestral. No es un derecho adquirido. Motos y bicicletas tienen zona marcada. El vehículo se deja bajo responsabilidad del titular.
+
+Artículo 27. Visitantes. Todo visitante se registra en recepción con cédula y anfitrión interno. No se entregan tarjetas de acceso de colaboradores a terceros. Las visitas de proveedores de más de un día se avisan a Seguridad Física.
+
+Artículo 28. Credenciales físicas. El carné se porta visible en sede. La pérdida se reporta el mismo día. El duplicado tiene costo administrativo salvo hurto con denuncia.
+
+Artículo 29. Cafetería y zonas comunes. Las zonas comunes no son puestos de trabajo permanente. Las llamadas con cliente no se toman en la cafetería. Cada quien deja el espacio limpio; no hay servicio de aseo de vajilla personal.
+
+Artículo 30. Mascotas en sede. No se admiten mascotas en sede salvo perros de asistencia con certificado. Los eventos “pet day” se anuncian y no aplican en salas de cliente.
+
+Artículo 31. Salas de reunión. Las salas se reservan por el calendario. Quince minutos de retraso liberan la sala. No se comen alimentos en salas de cliente. La última persona apaga pantalla y tablero.
+
+Artículo 32. Silencio en piso abierto. En piso abierto los llamados con cliente se toman en cabinas. El volumen de parlantes está prohibido. Los auriculares son de uso personal.
+
+Artículo 33. Viáticos. Los viáticos se solicitan con tres (3) días hábiles de antelación en el sistema de gastos, con cotización del desplazamiento. Sin orden de viaje no hay reembolso.
+
+Artículo 34. Anticipos. El anticipo no supera el ochenta por ciento (80%) del presupuesto aprobado. Se legaliza a los cinco (5) días hábiles de regreso. El anticipo no legalizado se descuenta de nómina.
+
+Artículo 35. Alojamiento. El tope de hotel es el de la tabla anual de viajes por ciudad. Se reserva en la agencia autorizada. Alojamientos particulares de plataformas se admiten si el costo es menor al tope y hay factura.
+
+Artículo 36. Alimentación en viaje. La alimentación en viaje nacional tiene tope diario publicado por Finanzas. No se reconocen bebidas alcohólicas ni propinas por encima del diez por ciento (10%).
+
+Artículo 37. Taxis y apps. Traslado aeropuerto-hotel y hotel-cliente se reconoce con soporte. Los trayectos personales no se reembolsan. En ciudades con convenio de transporte corporativo, ese es el medio por defecto.
+
+Artículo 38. Kilometraje. El uso de vehículo propio en diligencia se paga por kilometraje según tarifa anual. El trayecto casa-sede no es kilometraje. Se adjunta bitácora y soat vigente.
+
+Artículo 39. Tarjeta corporativa. La tarjeta corporativa es personal e intransferible. Está prohibido el retiro de efectivo no autorizado. El extracto se concilia el día cinco (5) de cada mes.
+
+Artículo 40. Viajes internacionales. Todo viaje internacional requiere visto bueno de la dirección de área y de Legal (visa, datos, seguros). Los tiquetes se compran en clase económica salvo vuelo de más de ocho (8) horas con autorización.
+
+Artículo 41. Seguro de viaje. La compañía cubre seguro médico de viaje en desplazamientos autorizados. Enfermedades preexistentes y deportes de riesgo no están cubiertos. El siniestro se avisa a Administración en 24 horas.
+
+Artículo 42. Puntos y millas. Las millas y puntos de tiquetes corporativos son de la compañía. No se cambian por beneficio personal. Los upgrades pagados por el colaborador no se reembolsan.
+
+Artículo 43. Cancelaciones. La cancelación de un viaje se informa de inmediato. Las penalidades por causa personal las asume el colaborador. Las de causa de negocio las asume el centro de costo.
+
+Artículo 44. Gastos no reembolsables. No se reembolsan multas de tránsito, minibar, lavandería de lujo, regalos, ni compras de indumentaria. Los peajes sí, con factura, en ruta de la diligencia.
+
+Artículo 45. Pago de nómina. La nómina se paga el último día hábil del mes. Los descuentos de ley, libranzas y anticipos constan en el desprendible. Las reclamaciones de pago se presentan a Tesorería en cinco (5) días hábiles.
+
+Artículo 46. Auxilio de conectividad. El auxilio de conectividad, cuando exista en el contrato, se paga con la nómina y no es salario. Se pierde si el colaborador pasa a esquema 100% presencial.
+
+Artículo 47. Auxilio de alimentación. El auxilio de alimentación aplica en días de sede según convenio. No es redimible en efectivo. El saldo no usado en el mes no se acumula más de un periodo.
+
+Artículo 48. Prima y cesantías. Las prestaciones de ley se liquidan según la normativa laboral aplicable al contrato. Esta política no modifica derechos de ley. Las consultas de liquidación se atienden por Recursos Humanos, no por el jefe de área.
+
+Artículo 49. Bonos por resultado. Los bonos discrecionales no son salariales ni se consolidan. Se otorgan según tablero aprobado por Gerencia. Quien no esté activo el día de corte no participa, salvo ausencia por licencia de ley.
+
+Artículo 50. Comisiones comerciales. Las comisiones se rigen por el anexo comercial del cargo. Un negocio se considera ganado cuando hay factura y no hay nota crédito de anulación en noventa (90) días. Las disputas las resuelve Finanzas con Comercial.
+
+Artículo 51. Préstamos internos. La compañía no otorga préstamos de nómina salvo convenio escrito de calamidad, aprobado por Recursos Humanos y Gerencia. El descuento no supera el treinta por ciento (30%) del neto.
+
+Artículo 52. Seguros voluntarios. Los seguros voluntarios (vida, salud complementaria) se descuentan de nómina solo con autorización firmada. La desafiliación se pide por escrito con un mes de anticipación.
+
+Artículo 53. Gimnasio y bienestar. El convenio de bienestar es un beneficio revocable. No se paga en dinero. Las inasistencias no generan compensación. Los cupos de actividades se asignan por orden de inscripción.
+
+Artículo 54. Día de cumpleaños. El día de cumpleaños hábil puede tomarse como permiso remunerado de medio día, previo aviso de cinco (5) días. Si cae en festivo, no se traslada. No se acumula ni se paga.
+
+Artículo 55. Regalos a terceros. Los regalos a clientes o proveedores por encima del tope anual publicado por Ética se prohíben. Los de menor valor se registran en el libro de atenciones. Recibir efectivo está prohibido.
+
+Artículo 56. Cajas de compensación. La afiliación a caja de compensación, EPS y ARL sigue la ley. Los cambios de sede o de municipio se informan a Recursos Humanos en tres (3) días hábiles para actualizar coberturas.
+
+Artículo 57. Periodo de prueba. El periodo de prueba es el de la ley y el contrato. Al finalizar, el jefe carga la evaluación en el sistema. Sin evaluación a tiempo se entiende prórroga del contrato en los términos legales, no un aumento automático.
+
+Artículo 58. Objetivos anuales. Los objetivos se pactan en el primer trimestre. Máximo cinco (5) objetivos por persona. Los cambios de objetivo a mitad de año requieren visto de la gerencia de área.
+
+Artículo 59. Evaluación de desempeño. Hay una evaluación formal al año y una conversación de mitad de periodo. El colaborador puede anexar comentarios. La calificación no se discute por chat; se agenda reunión.
+
+Artículo 60. Planes de mejora. Un plan de mejora dura entre treinta (30) y noventa (90) días, con hitos quincenales. No es un proceso disciplinario. Si no se cumplen los hitos, se abre el conducto regular.
+
+Artículo 61. Promociones. Las promociones se publican internamente al menos cinco (5) días hábiles. Tener la antigüedad mínima no garantiza el cargo. La decisión queda en acta de Recursos Humanos y del área.
+
+Artículo 62. Movilidad interna. Se puede postular a otra área después de doce (12) meses en el cargo actual, salvo acuerdo de las dos gerencias. El traspaso no borra procesos disciplinarios abiertos.
+
+Artículo 63. Capacitación externa. Los cursos externos pagados por la compañía de más de un salario mínimo implican permanencia de seis (6) meses o reembolso proporcional si hay retiro voluntario.
+
+Artículo 64. Certificaciones. Los exámenes de certificación se pagan una vez. El reintento lo cubre el colaborador, salvo que el área lo autorice por cambio de versión oficial de la certificación.
+
+Artículo 65. Mentoría. Los mentores internos dedican hasta dos (2) horas al mes, acordadas. La mentoría no sustituye al jefe. No se evalúa al mentor por el desempeño del aprendiz.
+
+Artículo 66. Idiomas. El auxilio de idiomas, si existe, exige asistencia mínima del ochenta por ciento (80%) y una prueba semestral. No se paga el nivel repetido.
+
+Artículo 67. Conferencias. La asistencia a conferencias como ponente se autoriza si no hay conflicto de agenda de cliente. Los honorarios externos se declaran a Ética. El material con marca Overtech se aprueba con Comunicaciones.
+
+Artículo 68. Biblioteca y licencias de aprendizaje. Las licencias de plataformas de aprendizaje son personales. Compartir clave es falta. Al retiro se revocan el mismo día.
+
+Artículo 69. Cuentas y contraseñas. Las cuentas son personales. Está prohibido compartir contraseñas. El gestor de claves corporativo es el único almacenamiento permitido. El cambio forzado es cada noventa (90) días en sistemas que no tengan doble factor.
+
+Artículo 70. Doble factor. El doble factor es obligatorio en correo, VPN, nube y repositorios. El token no se guarda en capturas ni en chat. La pérdida del teléfono se reporta a Mesa de Ayuda en el día.
+
+Artículo 71. VPN y red. El acceso a ambientes productivos desde fuera de sede se hace por VPN. Está prohibido el puente de red (tethering) hacia equipos de terceros. Las redes abiertas de hotel se usan solo con VPN activa.
+
+Artículo 72. Clasificación de datos. La información se clasifica en pública, interna, confidencial y secreta. Los datos de clientes y de nómina son confidenciales. Lo secreto no sale del sistema autorizado ni por correo personal.
+
+Artículo 73. Correo. El correo corporativo es de la compañía. No se usa para temas políticos partidarios ni para archivos personales masivos. Los adjuntos de más de 25 MB van por el repositorio oficial.
+
+Artículo 74. Mensajería. WhatsApp personal no es canal de datos de cliente. Los grupos internos oficiales viven en la herramienta corporativa. Las instrucciones operativas dadas solo por mensaje personal no tienen validez.
+
+Artículo 75. Dispositivos USB. Está prohibido copiar datos de cliente a USB no cifrada. Las memorias de la compañía se cifran y se inventarian. La pérdida se reporta como incidente.
+
+Artículo 76. Nube personal. Está prohibido subir información interna a nubes personales (unidades privadas, notas personales no corporativas). El respaldo oficial es el de TI.
+
+Artículo 77. Incidentes de seguridad. Phishing, pérdida de equipo o acceso extraño se reportan de inmediato al canal de incidentes. No se reenvía el correo sospechoso a compañeros. TI puede aislar el equipo sin aviso previo.
+
+Artículo 78. Desarrollo seguro. No se suben secretos ni llaves a repositorios. Los secretos viven en el cofre corporativo. Un hallazgo de secreto en git se rota el mismo día y se abre incidente.
+
+Artículo 79. Ambientes. Producción no se usa para pruebas. Los datos de producción se anonimizan antes de bajar a desarrollo. El acceso privilegiado se revisa cada trimestre.
+
+Artículo 80. Retiro de accesos. El último día hábil se revocan cuentas, carné y tokens. El jefe entrega el checklist a TI antes de las 12:00. Queda prohibido usar canales internos después del retiro.
+
+Artículo 81. Equipo asignado. El portátil, monitor y periféricos son de la compañía. Se cuidan con funda en tránsito. El daño por negligencia se cobra según inventario. No se instala software pirata.
+
+Artículo 82. Software autorizado. Solo se instala software de la lista blanca o con ticket aprobado. Las herramientas de IA públicas no reciben datos internos ni código de cliente. El uso de copilotos internos sigue la guía de TI.
+
+Artículo 83. Actualizaciones. Las actualizaciones de sistema y antivirus no se posponen más de siete (7) días. TI puede forzar reinicio fuera de horario de cliente, con aviso de 24 horas cuando sea posible.
+
+Artículo 84. Soporte. Mesa de Ayuda atiende por el portal. El chat informal al técnico de pasillo no abre ticket. La prioridad P1 (caída de producción) se escala por el teléfono de guardia.
+
+Artículo 85. BYOD. El uso de teléfono personal para correo corporativo exige contenedor MDM. La compañía puede borrar el contenedor, no la galería personal. Quien no acepte MDM usa solo equipo corporativo.
+
+Artículo 86. Impresión. Se imprime solo lo necesario. Documentos confidenciales se recogen de inmediato. Las impresoras de sede no se usan para material personal masivo.
+
+Artículo 87. Copias de seguridad. El colaborador no es el responsable de respaldar el servidor. Sí lo es de no guardar el único original en el escritorio local. Los archivos de trabajo viven en la unidad del área.
+
+Artículo 88. Licencias. Las licencias de diseño, CAD o analítica se asignan por puesto. Quien cambie de rol las devuelve en cinco (5) días. El uso en un segundo equipo no autorizado es falta.
+
+Artículo 89. Monitoreo. Los equipos corporativos pueden tener agentes de inventario, parches y DLP. No hay grabación permanente de pantalla. Los registros se usan para seguridad y cumplimiento, no para acoso.
+
+Artículo 90. Devolución. Al retiro o cambio de equipo se entrega con contraseña de sesión temporal, sin datos personales en el disco, y con accesorios de inventario. Faltantes se descuentan según acta.
+
+Artículo 91. Conflicto de interés. Se declara por escrito cualquier relación familiar o societaria con proveedores, clientes o candidatos. La omisión es falta grave. Mientras se evalúa, el colaborador se abstiene de decidir sobre ese tercero.
+
+Artículo 92. Acoso y respeto. Está prohibido el acoso laboral, sexual o por razón de identidad, en sede, remoto y canales digitales. El canal ético recibe denuncias anónimas. Investigar de buena fe no genera represalia.
+
+Artículo 93. Datos personales. Los datos de colaboradores y candidatos se tratan según la ley de protección de datos. No se envían hojas de vida a correos personales. Las consultas de habeas data las atiende el área de Privacidad.
+
+Artículo 94. Imagen y redes. Opinar en redes a título personal no compromete a la compañía. No se publican capturas de tableros, código ni listas de clientes. El uso de logo requiere autorización de Comunicaciones.
+
+Artículo 95. Salud ocupacional. Los exámenes ocupacionales periódicos son obligatorios para el cargo que los exija. El incumplimiento se reporta a ARL y a Recursos Humanos. El botiquín de sede no sustituye urgencias médicas.
+
+Artículo 96. Emergencias. En simulacro o evacuación se sigue al brigadista. Está prohibido usar el ascensor. Los colaboradores remotos confirman “ok” en el canal de emergencia si el evento afecta su zona.
+
+Artículo 97. Alcohol y sustancias. Está prohibido trabajar bajo efecto de alcohol o sustancias ilegales. En eventos de compañía el consumo de alcohol, si se autoriza, es moderado y no aplica a quien vaya a conducir o a atender P1.
+
+Artículo 98. Proyectos y cambios. Todo cambio en producción sigue la ventana y el CAB del área. Un cambio de emergencia se documenta al día hábil siguiente. El trabajo no facturable de más de ocho (8) horas se registra en el PMO.
+
+Artículo 99. Proveedores internos. Quien contrate un proveedor sigue compras: tres cotizaciones por encima del umbral, contrato y tratamiento de datos. No se paga por transferencia personal. El conflicto de interés del artículo 91 aplica.
+
+Artículo 100. Vigencia y reformas. Esta política entra en vigencia al publicarse en el portal interno. Las reformas se anuncian con cinco (5) días hábiles. La versión anterior queda en archivo. Lo no previsto lo resuelve el Comité de Gestión Humana.
+
+</pre>
+    </details>
+    <p class="small">Código: <code>PROMPT_RAG</code> / <code>armar_prompt_rag()</code> en <code>scripts/load_test_caso2.py</code>. En las mezclas chicas (5+5, 15+15) todos los workers mandaban la <em>misma</em> pregunta a01. Desde 25+25: <code>--mode-asistente varios</code>, una pregunta distinta por worker.</p>
+
+    <h2 id="preguntas">Las 50 preguntas (texto exacto)</h2>
+    <p>a01–a25 se usaron en 25+25 / 30+30 / 40+40. a26–a50 se sumaron para 50+50. Con 30 workers y 25 preguntas, las extra reciclan a01–a05. El bloque de política es el mismo; cambia solo la pregunta.</p>
+    <table>
+      <thead><tr><th>ID</th><th>Área</th><th>Pregunta</th></tr></thead>
+      <tbody>
+        <tr><td>a01</td><td>RRHH / vacaciones</td><td>Llevo 3 años en la compañía. ¿Cuántos días hábiles de vacaciones me corresponden este año según la política? Indica también si puedo acumular días no disfrutados.</td></tr>
+        <tr><td>a02</td><td>RRHH / vacaciones</td><td>Entro el mes que viene (antigüedad 0). ¿Tengo derecho a vacaciones este año o debo esperar a cumplir un año?</td></tr>
+        <tr><td>a03</td><td>RRHH / vacaciones</td><td>Llevo 6 años. ¿Cuántos días hábiles me tocan y ya llegué al tope de 25 o todavía no?</td></tr>
+        <tr><td>a04</td><td>RRHH / acumulación</td><td>No tomé vacaciones el año pasado. ¿Hasta cuántos años puedo acumular y quién tiene que autorizarlo?</td></tr>
+        <tr><td>a05</td><td>RRHH / plazos</td><td>Quiero salir de vacaciones en 8 días. ¿La política me deja o el aviso mínimo es más largo? ¿Por dónde se pide?</td></tr>
+        <tr><td>a06</td><td>RRHH / matrimonio</td><td>Me caso el mes que viene. ¿Cuántos días de permiso remunerado me corresponden y se descuentan de las vacaciones?</td></tr>
+        <tr><td>a07</td><td>RRHH / duelo</td><td>Falleció mi padre. ¿Cuántos días de permiso tengo y de qué grado de parentesco habla la política?</td></tr>
+        <tr><td>a08</td><td>RRHH / médico</td><td>Tengo una cita médica de 3 horas. ¿Entra como permiso remunerado? ¿Cuántas citas al mes puedo pedir?</td></tr>
+        <tr><td>a09</td><td>RRHH / médico</td><td>Este mes ya usé dos citas médicas. ¿Puedo pedir una tercera de 2 horas según el artículo de permisos?</td></tr>
+        <tr><td>a10</td><td>Operaciones / remoto</td><td>Paso a trabajo remoto tres días a la semana. ¿Eso me cambia los días de vacaciones o la jornada de 40 horas?</td></tr>
+        <tr><td>a11</td><td>RRHH / capacitación</td><td>Me mandan a una capacitación obligatoria de dos días. ¿Me descuentan vacaciones o cuenta como tiempo laboral?</td></tr>
+        <tr><td>a12</td><td>RRHH / conflictos</td><td>Mi jefe no me aprueba las vacaciones y no estamos de acuerdo. ¿Quién resuelve y en cuántos días hábiles?</td></tr>
+        <tr><td>a13</td><td>RRHH / vacaciones</td><td>Llevo exactamente 1 año cumplido hoy. ¿Ya puedo pedir los 15 días o la política pide más antigüedad?</td></tr>
+        <tr><td>a14</td><td>RRHH / vacaciones</td><td>Estoy en el tercer año. Confírmame el cálculo: 15 días base más 2 adicionales, ¿son 17 hábiles?</td></tr>
+        <tr><td>a15</td><td>Admin / cobertura</td><td>Al pedir vacaciones, ¿qué datos tengo que cargar en el sistema (fechas, cobertura) según el artículo de solicitud?</td></tr>
+        <tr><td>a16</td><td>RRHH / acumulación</td><td>Tengo días vencidos de hace tres años. ¿La política me deja arrastrarlos o el máximo de acumulación ya se pasó?</td></tr>
+        <tr><td>a17</td><td>Jurídica / alcance</td><td>¿Esta política aplica a todos los colaboradores con contrato vigente o solo a planta de Bogotá?</td></tr>
+        <tr><td>a18</td><td>RRHH / duelo</td><td>Falleció un tío (no es primer grado). ¿La política me da los 5 días o eso solo cubre primer grado?</td></tr>
+        <tr><td>a19</td><td>RRHH / matrimonio</td><td>El permiso de matrimonio, ¿son días hábiles o calendario? Responde solo con lo que diga el texto.</td></tr>
+        <tr><td>a20</td><td>PMO / cobertura</td><td>Si soy la única persona del proyecto, ¿la política me obliga a dejar un plan de cobertura de funciones al pedir vacaciones?</td></tr>
+        <tr><td>a21</td><td>RRHH / jornada</td><td>La jornada semanal que menciona la política, ¿cuántas horas son y el remoto las modifica?</td></tr>
+        <tr><td>a22</td><td>RRHH / capacitación</td><td>Una capacitación que yo elegí (no es obligatoria), ¿también cuenta como tiempo laboral o solo las obligatorias?</td></tr>
+        <tr><td>a23</td><td>RRHH / tope</td><td>Llevo 12 años. ¿Sigo sumando 2 días por año o ya estoy en el máximo de 25 días hábiles?</td></tr>
+        <tr><td>a24</td><td>RRHH / plazos</td><td>El aviso de 15 días para pedir vacaciones, ¿es calendario o hábil? Cita el artículo.</td></tr>
+        <tr><td>a25</td><td>RRHH / conflictos</td><td>Si el Comité de Gestión Humana no me responde, ¿la política fija un plazo máximo de 10 días hábiles?</td></tr>
+        <tr><td>a26</td><td>RRHH / vacaciones</td><td>Llevo 4 años. ¿Me tocan 19 días hábiles (15 + 2 + 2) o el adicional se cuenta distinto?</td></tr>
+        <tr><td>a27</td><td>RRHH / vacaciones</td><td>Estoy en el segundo año (aún no llego al tercero). ¿Sigo en 15 días o ya me suman los 2 adicionales?</td></tr>
+        <tr><td>a28</td><td>RRHH / vacaciones</td><td>¿La política me deja partir las vacaciones en dos tramos o tengo que tomarlas de corrido?</td></tr>
+        <tr><td>a29</td><td>RRHH / acumulación</td><td>Para acumular, ¿basta la autorización del jefe o también tiene que firmar Recursos Humanos? Cita el artículo.</td></tr>
+        <tr><td>a30</td><td>RRHH / plazos</td><td>Presenté la solicitud con 14 días calendario. ¿Me alcanza el aviso del artículo 4 o me falta un día?</td></tr>
+        <tr><td>a31</td><td>RRHH / matrimonio</td><td>¿Puedo pegar el permiso de matrimonio de 3 días y salir de vacaciones el día siguiente, o la política lo prohíbe?</td></tr>
+        <tr><td>a32</td><td>RRHH / duelo</td><td>Falleció mi hermano. ¿Cuenta como familiar en primer grado y me dan los 5 días?</td></tr>
+        <tr><td>a33</td><td>RRHH / duelo</td><td>Falleció mi suegra. ¿La política menciona segundo grado o solo primer grado?</td></tr>
+        <tr><td>a34</td><td>RRHH / médico</td><td>La cita me dura 5 horas. El tope es 4 horas por evento: ¿me cubren 4 y el resto es permiso no remunerado, o no aplica?</td></tr>
+        <tr><td>a35</td><td>RRHH / médico</td><td>Ya usé las 2 citas del mes. ¿Puedo una cita odontológica extra o el tope cubre cualquier cita médica?</td></tr>
+        <tr><td>a36</td><td>Operaciones / remoto</td><td>Paso a remoto los 5 días. ¿Sigo con 40 horas semanales y los mismos días de vacaciones?</td></tr>
+        <tr><td>a37</td><td>RRHH / capacitación</td><td>La capacitación obligatoria cae en sábado. ¿Igual cuenta como tiempo laboral y no descuenta vacaciones?</td></tr>
+        <tr><td>a38</td><td>Admin / cobertura</td><td>Tengo un backup asignado. ¿Igual debo cargar el plan de cobertura en el sistema al pedir vacaciones?</td></tr>
+        <tr><td>a39</td><td>Jurídica / alcance</td><td>Soy contratista, no empleado de planta. ¿El artículo 1 me cubre o solo a contrato laboral vigente?</td></tr>
+        <tr><td>a40</td><td>Jurídica / alcance</td><td>Trabajo en la sede de Medellín. ¿Esta política aplica o el texto la limita a una ciudad?</td></tr>
+        <tr><td>a41</td><td>RRHH / conflictos</td><td>El Comité se tardó 11 días hábiles. ¿Eso incumple el plazo máximo de 10 del artículo 8?</td></tr>
+        <tr><td>a42</td><td>RRHH / conflictos</td><td>¿Puedo apelar la decisión del Comité de Gestión Humana? Si el texto no lo dice, dilo.</td></tr>
+        <tr><td>a43</td><td>RRHH / tope</td><td>Llevo 8 años. Confirma si ya estoy en el tope de 25 (15 más 2 por cada año desde el tercero).</td></tr>
+        <tr><td>a44</td><td>RRHH / acumulación</td><td>Tengo días del año pasado y de este. ¿Puedo sumar los dos cupos si RRHH y el jefe autorizan, sin pasar de 2 años?</td></tr>
+        <tr><td>a45</td><td>RRHH / vacaciones</td><td>Si un festivo cae en medio de mis vacaciones, ¿la política dice que ese día se descuenta o no lo menciona?</td></tr>
+        <tr><td>a46</td><td>RRHH / vacaciones</td><td>¿Puedo pedir medio día de vacaciones o el texto solo habla de días hábiles enteros?</td></tr>
+        <tr><td>a47</td><td>RRHH / permisos</td><td>Necesito un permiso no remunerado de una semana. ¿El artículo 1 lo contempla o no da reglas?</td></tr>
+        <tr><td>a48</td><td>RRHH / médico</td><td>¿Las 4 horas de cita médica son por evento y se pueden usar en dos visitas de 2 horas el mismo mes?</td></tr>
+        <tr><td>a49</td><td>Admin / solicitud</td><td>Ya me aprobaron las fechas. ¿La política dice cómo cambiarlas o solo habla de la solicitud inicial?</td></tr>
+        <tr><td>a50</td><td>RRHH / jornada</td><td>En remoto me piden 45 horas. ¿Eso choca con las 40 horas del artículo 6? Responde solo con el texto.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="coder">Qué se le mandó al programador</h2>
+    <p>Pedido tipo Continue / VS Code: “arma esta API”. Todos los workers mandan <strong>el mismo</strong> texto. El prompt de código es corto (~156 u ~316 tokens); el del asistente es ~40 veces más largo. Por eso el coder aguanta 25–50 y el chat RAG no.</p>
+
+    <h3>1 · Flask chico (health / echo / items)</h3>
+    <p>Usado en 5+5, 8+8, 10+10, 15+15, 20+20 y 25+25 Flask (A y B). <code>--mode-coder flask</code>. Salida máxima 1024. El modelo cerraba en ~136 tokens / ~6 s.</p>
+    <pre>Eres un asistente de programación. Genera una API mínima en Flask lista para correr:
+- GET /health → {"status": "ok"}
+- POST /echo → recibe JSON {"msg": "..."} y lo devuelve
+- GET /items/&lt;int:item_id&gt; → {"id": item_id, "name": "item-&lt;id&gt;"}
+Incluye: imports, app = Flask(__name__), los 3 endpoints, if __name__ == '__main__'
+con app.run(host='0.0.0.0', port=5000, debug=False).
+Solo código Python completo en un bloque, sin explicación larga.</pre>
+
+    <h3>2 · Usuarios + JWT (pedido día a día)</h3>
+    <p>Usado en 25+25 JWT, 30+30, 40+40 y 50+50 (A y B). <code>--mode-coder users</code>. Con tope 1024 el archivo no cerraba (1.024 tokens exactos). Con <strong>4096</strong> sí: ~1.410 tokens.</p>
+    <pre>Eres un asistente de programación. Genera una API de usuarios en Flask
+lista para correr, en un solo archivo.
+
+Autenticación JWT:
+- POST /auth/register → body JSON {"email", "password", "name"} →
+  crea el usuario y devuelve {"access_token", "user"}
+- POST /auth/login → body JSON {"email", "password"} →
+  devuelve {"access_token", "user"} o 401
+
+CRUD de usuarios (header Authorization: Bearer &lt;token&gt; obligatorio):
+- GET /users → lista todos
+- GET /users/&lt;int:user_id&gt; → uno, o 404
+- POST /users → creación {"email", "password", "name"}
+- PUT /users/&lt;int:user_id&gt; → actualización de name/email/password
+- DELETE /users/&lt;int:user_id&gt; → eliminación
+
+Reglas:
+- Store en memoria (dict), sin base de datos ni SQL.
+- Contraseñas hasheadas con werkzeug.security.
+- JWT con PyJWT, secret en una constante, expiración 1 hora.
+- Token ausente o inválido → 401.
+- Incluye imports, app = Flask(__name__), y if __name__ == '__main__'
+  con app.run(host='0.0.0.0', port=5000, debug=False).
+Solo código Python completo en un bloque, sin explicación larga.</pre>
+
+    <h2 id="comandos">Cómo se lanzó cada prueba</h2>
+    <p>Con los dos vLLM arriba. Una sola orden abre <em>los dos</em> lados. A y B usaron los mismos flags; cambiaba el par de modelos. C y D (coder quieto) apagan el coder con <code>--c-coder 0</code>.</p>
+    <table>
+      <thead>
+        <tr><th>Corrida</th><th>Asistente</th><th>Coder</th><th>A la vez</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>5+5 / 15+15 / 20+20 Flask</td>
+          <td>Misma pregunta RAG (a01 + política)</td>
+          <td>Flask chico</td>
+          <td>N + N workers, 90 s</td>
+        </tr>
+        <tr>
+          <td>25+25 Flask</td>
+          <td>a01–a25 distintas</td>
+          <td>Flask chico</td>
+          <td>25 + 25, 90 s</td>
+        </tr>
+        <tr>
+          <td>25+25 / 30+30 / 40+40 / 50+50 JWT</td>
+          <td>a01–a25 o a01–a50</td>
+          <td>Usuarios + JWT (tope 4096)</td>
+          <td>N + N, 90 s, un solo gather</td>
+        </tr>
+        <tr>
+          <td>C · 25 o 50 solo</td>
+          <td>a01–a25 o a01–a50</td>
+          <td>Apagado (<code>--c-coder 0</code>)</td>
+          <td>Solo N workers RAG, 90 s</td>
+        </tr>
+        <tr>
+          <td>D · 7B + coder 32B (pendiente)</td>
+          <td>5 / 15 / 20 / 30</td>
+          <td>Quieto, o 5–10 Flask</td>
+          <td>Misma ventana 90 s; modelos <code>qwen2.5-7b-instruct</code> + <code>qwen2.5-coder-32b</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>15+15 Flask (misma pregunta × N)</h3>
+    <pre>cd ~/test-ia-local/scripts
+/data/venvs/vllm312/bin/python load_test_mixto.py \
+  --c-asistente 15 --c-coder 15 --duracion-s 90 \
+  --out /data/caso23-bench/mix-15-15.json</pre>
+
+    <h3>25+25 Flask (25 preguntas distintas + Flask chico)</h3>
+    <pre>/data/venvs/vllm312/bin/python load_test_mixto.py \
+  --mode-asistente varios --c-asistente 25 --c-coder 25 --duracion-s 90 \
+  --out /data/caso23-bench/mix-25-25.json</pre>
+
+    <h3>25+25 JWT (CRUD que sí termina)</h3>
+    <pre>/data/venvs/vllm312/bin/python load_test_mixto.py \
+  --mode-asistente varios --mode-coder users \
+  --c-asistente 25 --c-coder 25 --duracion-s 90 \
+  --max-tokens-coder 4096 --timeout 400 \
+  --out /data/caso23-bench/mix-25-25-users-completo.json</pre>
+
+    <h3>50+50 JWT (100 conexiones en el mismo segundo)</h3>
+    <pre>/data/venvs/vllm312/bin/python load_test_mixto.py \
+  --mode-asistente varios --mode-coder users \
+  --c-asistente 50 --c-coder 50 --duracion-s 90 \
+  --max-tokens-coder 4096 --timeout 400 \
+  --out /data/caso23-bench/mix-50-50-users.json</pre>
+
+    <h3>C · solo asistente 32B (25 o 50)</h3>
+    <pre>/data/venvs/vllm312/bin/python load_test_mixto.py \
+  --mode-asistente varios --c-asistente 25 --c-coder 0 \
+  --duracion-s 90 --timeout 400 \
+  --out /data/caso23-bench/solo32-25.json</pre>
+
+    <h3>D · 7B instruct + coder 32B (chat 30 + coder 10)</h3>
+    <pre>/data/venvs/vllm312/bin/python load_test_mixto.py \
+  --model-asistente qwen2.5-7b-instruct \
+  --model-coder qwen2.5-coder-32b \
+  --mode-asistente varios --mode-coder flask \
+  --c-asistente 30 --c-coder 10 --duracion-s 90 \
+  --out /data/caso23-bench/mix-7b32b-30-10.json</pre>
+
+    <p class="note">Hardware se muestreó al mismo tiempo (<code>scripts/resource_sample.py</code>, cada 0,4 s: VRAM, watts, °C, RAM, CPU). Textos canónicos también en <code>pruebas-prog-asis-sep/promps/</code>. D aún no se corrió: falta la GPU encendida.</p>
+  </main>
+  <footer>
+    Overtech · septiembre 2026 · método de las pruebas A, B y C. El Flask generado no se ejecutó.
+  </footer>
+</body>
+</html>

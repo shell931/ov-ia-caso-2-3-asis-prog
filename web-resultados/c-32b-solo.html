@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>C · Un modelo 32B — Overtech IA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <p class="kicker">Escenario C · un solo modelo en la GPU</p>
+      <h1>Un modelo 32B (sin el otro servicio)</h1>
+      <p class="sub">Septiembre: solo el asistente 32B (25 y 50 preguntas distintas). Julio: solo el programador 32B. Sacar al compañero no hace magia a 25–50 chats distintos.</p>
+    </div>
+  </header>
+  <nav class="bar">
+    <div class="wrap">
+      <a href="index.html">Inicio</a>
+      <a href="a-32b.html">A · Dos modelos grandes</a>
+      <a href="b-7b.html">B · Dos modelos 7B</a>
+      <a class="active" href="c-32b-solo.html">C · Un modelo 32B</a>
+      <a href="d-7b-32b.html">D · 7B + coder 32B</a>
+      <a href="metodo.html">Cómo se midió</a>
+      <a href="resumen-32b.html">Resumen 32B</a>
+      <a href="30-concurrencias.html">Cómo lograr 30 concurrencias</a>
+    </div>
+  </nav>
+  <main class="wrap">
+    <p class="note">Se pidió “1 modelo 32B (coder)”. En septiembre corrimos el <strong>asistente 32B solo</strong> (el pedido de la última prueba). El <strong>coder 32B solo</strong> es la campaña de julio, misma GPU. Las dos van aquí.</p>
+
+    <h2>C1 · Solo asistente 32B (6 septiembre)</h2>
+    <p>Coder apagado. La GPU entera (90%) para <code>Qwen2.5-32B-Instruct-AWQ</code>. Mismas 50 preguntas de políticas que el resto de septiembre.</p>
+    <div class="hw">
+      <div><span>VRAM</span><b>90,2%</b>86,2 GB · un solo proceso</div>
+      <div><span>Peso del modelo</span><b>18,1 GB</b>el resto es contexto</div>
+      <div><span>RAM del server</span><b>6,2 GB</b>10%</div>
+      <div><span>CPU</span><b>18–23%</b></div>
+      <div><span>Pico</span><b>610 W</b>76–77 °C</div>
+      <div><span>GPU</span><b>100%</b></div>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Prueba</th><th>Gente a la vez</th><th>Velocidad</th><th>Espera (p95)</th><th>¿Fluido?</th><th>W / °C</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>25 preguntas distintas</td><td>25</td>
+          <td>2,24 tok/s</td><td>71 s</td>
+          <td><span class="pill no">No</span></td>
+          <td>610 W / 76 °C</td>
+        </tr>
+        <tr>
+          <td>50 preguntas distintas</td><td>50</td>
+          <td>1,23 tok/s</td><td>104 s</td>
+          <td><span class="pill no">No</span></td>
+          <td>610 W / 77 °C</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>0 errores. Comparado con el 32B <em>compartiendo</em> GPU: 2,24 vs 1,80 (a 25) y 1,23 vs 0,71 (a 50). <strong>Casi no mejora.</strong> El 7B <em>con</em> el programador encima sigue siendo más rápido a 25 (8,1).</p>
+    <p>El “solo 5” <strong>no aplica</strong> cuando el 32B está solo: ese 5 es con el programador al lado. Julio, misma pregunta repetida (el sistema reutiliza el documento), el 32B solo se sentía bien hasta 15–30. Septiembre midió 25 y 50 <em>preguntas distintas</em>: se traba.</p>
+
+    <h2>C2 · Solo programador 32B (28–29 julio)</h2>
+    <p>Un solo <code>Qwen2.5-Coder-32B-Instruct-AWQ</code> para VS Code / Continue. Sin asistente de empresa en esa GPU.</p>
+    <div class="hw">
+      <div><span>VRAM</span><b>90,9%</b>~87 GB reservados</div>
+      <div><span>RAM del server</span><b>~6 GB</b>9%</div>
+      <div><span>CPU</span><b>14–21%</b></div>
+      <div><span>GPU</span><b>90–100%</b></div>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Uso</th><th>Gente cómoda</th><th>Estrés aún usable</th><th>¿Fluido?</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Código (prompts cortos y RAG de código)</td>
+          <td>~10–15 generando</td>
+          <td>~30</td>
+          <td><span class="pill ok">Sí, para un equipo</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <p>30–100 personas con el IDE abierto son viables si no todas pegan generar al mismo tiempo. No hay chat de RRHH en esta GPU.</p>
+
+    <h2>Lectura</h2>
+    <ul>
+      <li>C no es un atajo para 50 preguntas distintas a la vez.</li>
+      <li>Si más adelante ponen el programador en la <em>misma</em> GPU que el asistente 32B, vuelven al escenario A (tope de ~5 en el chat).</li>
+      <li>Si el programador vive en <em>otra</em> máquina, el asistente 32B solo rinde como en julio cuando se reutiliza el mismo documento.</li>
+    </ul>
+    <p class="small">Septiembre: <a href="https://github.com/shell931/ia-analisis/blob/cursor/pruebas-dos-modelos-coresidentes-g7e-4c0f/pruebas-prog-asis-sep/resultados-solo-32b.md">resultados-solo-32b.md</a> · Julio coder: <a href="https://github.com/shell931/ia-analisis/blob/cursor/pruebas-dos-modelos-coresidentes-g7e-4c0f/resultados-caso-2-programacion.md">resultados-caso-2-programacion.md</a></p>
+  </main>
+  <footer>Overtech · escenario C · RTX PRO 6000</footer>
+</body>
+</html>
